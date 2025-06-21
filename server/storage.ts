@@ -127,7 +127,7 @@ export class DatabaseStorage implements IStorage {
 
   // Project operations
   async createProject(project: InsertProject): Promise<Project> {
-    const [newProject] = await db.insert(projects).values(project).returning();
+    const [newProject] = await db.insert(projects).values(project as any).returning();
     return newProject;
   }
 
@@ -165,7 +165,7 @@ export class DatabaseStorage implements IStorage {
 
   // Job operations
   async createJobOffer(job: InsertJobOffer): Promise<JobOffer> {
-    const [newJob] = await db.insert(jobOffers).values(job).returning();
+    const [newJob] = await db.insert(jobOffers).values(job as any).returning();
     return newJob;
   }
 

@@ -16,7 +16,7 @@ export default function Landing() {
               <span className="text-xl font-bold text-chad-blue">SkillLink</span>
             </div>
             <Button 
-              onClick={() => window.location.href = '/api/login'}
+              onClick={() => window.location.href = '/login'}
               className="bg-chad-blue hover:bg-chad-blue/90 text-white"
             >
               Se connecter
@@ -40,7 +40,7 @@ export default function Landing() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button 
               size="lg"
-              onClick={() => window.location.href = '/api/login'}
+              onClick={() => window.location.href = '/login'}
               className="bg-chad-blue hover:bg-chad-blue/90 text-white"
             >
               Rejoindre la communauté

@@ -4,21 +4,63 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertProjectSchema, insertJobOfferSchema, insertServiceSchema, insertAnnouncementSchema, insertCommentSchema, insertMessageSchema } from "@shared/schema";
+import { db } from "./db";
+import { users, projects, jobOffers, services, announcements } from "@shared/schema";
+import { sql } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  app.post('/api/auth/login', async (req, res) => {
+    const { email, password, role } = req.body;
+    
+    // Simple authentication check for test accounts
+    const testAccounts = {
+      'student@skilllink.td': { password: 'Student123!', role: 'student', id: '1' },
+      'admin@skilllink.td': { password: 'Admin123!', role: 'admin', id: '2' },
+      'mentor@skilllink.td': { password: 'Mentor123!', role: 'mentor', id: '3' },
+      'company@skilllink.td': { password: 'Company123!', role: 'company', id: '4' },
+    };
+
+    const account = testAccounts[email as keyof typeof testAccounts];
+    if (account && account.password === password && account.role === role) {
+      // Set session
+      (req.session as any).userId = account.id;
+      (req.session as any).userRole = account.role;
+      res.json({ success: true, user: { id: account.id, email, role } });
+    } else {
+      res.status(401).json({ message: 'Email, mot de passe ou rôle incorrect' });
+    }
+  });
+
+  app.get('/api/auth/user', async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
       const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
       res.json(user);
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
     }
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ message: 'Logout failed' });
+      }
+      res.json({ success: true });
+    });
   });
 
   // User profile routes

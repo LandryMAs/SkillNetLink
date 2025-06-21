@@ -1,43 +1,52 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/hooks/useAuth";
-import { apiRequest } from "@/lib/queryClient";
-import { Heart, MessageCircle, Share, Send } from "lucide-react";
+import { Heart, MessageCircle, Share2, MoreHorizontal, Send } from "lucide-react";
+import { format } from "date-fns";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 interface AnnouncementCardProps {
   announcement: any;
 }
 
 export default function AnnouncementCard({ announcement }: AnnouncementCardProps) {
+  const [showComments, setShowComments] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(announcement.likes || 0);
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [showComments, setShowComments] = useState(false);
-  const [newComment, setNewComment] = useState("");
-  const [isLiked, setIsLiked] = useState(false);
+
+  const { data: comments = [] } = useQuery({
+    queryKey: [`/api/announcements/${announcement.id}/comments`],
+    enabled: showComments,
+  });
 
   const likeMutation = useMutation({
     mutationFn: async () => {
-      if (isLiked) {
-        await apiRequest("DELETE", `/api/announcements/${announcement.id}/like`);
-      } else {
-        await apiRequest("POST", `/api/announcements/${announcement.id}/like`);
-      }
+      const response = await fetch(`/api/announcements/${announcement.id}/like`, {
+        method: isLiked ? "DELETE" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) throw new Error("Failed to like announcement");
+      return response.json();
     },
     onSuccess: () => {
       setIsLiked(!isLiked);
+      setLikeCount(prev => isLiked ? prev - 1 : prev + 1);
       queryClient.invalidateQueries({ queryKey: ["/api/announcements"] });
     },
-    onError: (error) => {
+    onError: () => {
       toast({
         title: "Erreur",
-        description: "Impossible de modifier le like",
+        description: "Impossible de liker l'annonce",
         variant: "destructive",
       });
     },
@@ -45,19 +54,25 @@ export default function AnnouncementCard({ announcement }: AnnouncementCardProps
 
   const commentMutation = useMutation({
     mutationFn: async (content: string) => {
-      await apiRequest("POST", `/api/announcements/${announcement.id}/comments`, {
-        content,
+      const response = await fetch(`/api/announcements/${announcement.id}/comments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content }),
       });
+      if (!response.ok) throw new Error("Failed to add comment");
+      return response.json();
     },
     onSuccess: () => {
-      setNewComment("");
+      setCommentText("");
       queryClient.invalidateQueries({ queryKey: [`/api/announcements/${announcement.id}/comments`] });
       toast({
         title: "Commentaire ajouté",
-        description: "Votre commentaire a été publié avec succès",
+        description: "Votre commentaire a été publié",
       });
     },
-    onError: (error) => {
+    onError: () => {
       toast({
         title: "Erreur",
         description: "Impossible d'ajouter le commentaire",
@@ -66,186 +81,119 @@ export default function AnnouncementCard({ announcement }: AnnouncementCardProps
     },
   });
 
-  const handleLike = () => {
-    likeMutation.mutate();
-  };
-
   const handleComment = () => {
-    if (newComment.trim()) {
-      commentMutation.mutate(newComment.trim());
-    }
-  };
-
-  const getBadgeColor = (type: string) => {
-    switch (type) {
-      case "project":
-        return "bg-chad-blue text-white";
-      case "job":
-        return "bg-chad-red text-white";
-      case "service":
-        return "bg-chad-yellow text-chad-blue";
-      default:
-        return "bg-gray-100 text-gray-700";
-    }
-  };
-
-  const getBadgeText = (type: string) => {
-    switch (type) {
-      case "project":
-        return "Projet";
-      case "job":
-        return "Offre";
-      case "service":
-        return "Service";
-      default:
-        return "Général";
+    if (commentText.trim()) {
+      commentMutation.mutate(commentText.trim());
     }
   };
 
   return (
-    <Card className="hover:shadow-md transition-shadow cursor-pointer">
-      <CardContent className="p-4">
-        <div className="flex items-start space-x-3">
-          <Avatar className="w-12 h-12">
-            <AvatarFallback className="bg-chad-blue text-white">
-              AU
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1">
-            <div className="flex items-center space-x-2">
-              <h4 className="font-semibold text-gray-900">Auteur</h4>
-              <span className="text-sm text-gray-500">•</span>
-              <span className="text-sm text-gray-500">
-                {new Date(announcement.createdAt).toLocaleDateString()}
-              </span>
-              <Badge className={getBadgeColor(announcement.type)}>
-                {getBadgeText(announcement.type)}
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600 mt-1">Étudiant</p>
-            
-            <div className="mt-3">
-              {announcement.title && (
-                <h5 className="font-medium text-gray-900 mb-2">{announcement.title}</h5>
-              )}
-              <p className="text-gray-700 text-sm leading-relaxed">
-                {announcement.content}
+    <Card className="mb-6 hover:shadow-lg transition-shadow">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center space-x-3">
+            <Avatar className="h-10 w-10">
+              <AvatarImage src="/placeholder-avatar.jpg" />
+              <AvatarFallback className="bg-chad-blue text-white">
+                {announcement.authorId?.charAt(0) || 'A'}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="font-semibold text-sm">{announcement.authorId || 'Auteur'}</p>
+              <p className="text-xs text-gray-500">
+                {announcement.createdAt ? format(new Date(announcement.createdAt), 'dd/MM/yyyy à HH:mm') : 'Il y a 2h'}
               </p>
-              
-              {announcement.imageUrl && (
-                <img 
-                  src={announcement.imageUrl} 
-                  alt="Announcement" 
-                  className="mt-3 rounded-lg w-full h-48 object-cover" 
-                />
-              )}
             </div>
-            
-            <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
-              <div className="flex space-x-6">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleLike}
-                  disabled={likeMutation.isPending}
-                  className={`text-gray-600 hover:text-chad-red transition-colors ${
-                    isLiked ? "text-chad-red" : ""
-                  }`}
-                >
-                  <Heart className={`h-4 w-4 mr-2 ${isLiked ? "fill-current" : ""}`} />
-                  {announcement.likes || 0}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowComments(!showComments)}
-                  className="text-gray-600 hover:text-chad-blue transition-colors"
-                >
-                  <MessageCircle className="h-4 w-4 mr-2" />
-                  {announcement.commentsCount || 0}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-gray-600 hover:text-chad-blue transition-colors"
-                >
-                  <Share className="h-4 w-4 mr-2" />
-                  Partager
-                </Button>
-              </div>
-              {announcement.type === "project" && (
-                <Button
-                  size="sm"
-                  className="bg-chad-yellow text-chad-blue hover:bg-chad-yellow/90"
-                >
-                  Rejoindre
-                </Button>
-              )}
-              {announcement.type === "service" && (
-                <Button
-                  size="sm"
-                  className="bg-chad-red text-white hover:bg-chad-red/90"
-                >
-                  Contacter
-                </Button>
-              )}
-              {announcement.type === "job" && (
-                <Button
-                  size="sm"
-                  className="bg-chad-blue text-white hover:bg-chad-blue/90"
-                >
-                  Postuler
-                </Button>
-              )}
-            </div>
-            
-            {/* Comments Section */}
-            {showComments && (
-              <div className="mt-4 space-y-3">
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <div className="flex items-start space-x-2">
-                    <Avatar className="w-8 h-8">
-                      <AvatarFallback className="bg-gray-300 text-gray-700 text-xs">
-                        U
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <span className="font-medium text-sm">Utilisateur</span>
-                      <p className="text-sm text-gray-700 mt-1">
-                        Excellent projet ! Très intéressé par cette initiative.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <Avatar className="w-8 h-8">
-                    <AvatarImage src={user?.profileImageUrl || ""} />
-                    <AvatarFallback className="bg-chad-blue text-white text-xs">
-                      {user?.firstName?.[0]}{user?.lastName?.[0]}
+          </div>
+          <Button variant="ghost" size="sm">
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      
+      <CardContent>
+        <div 
+          className="cursor-pointer"
+          onClick={() => setShowComments(!showComments)}
+        >
+          <CardTitle className="text-lg mb-2 hover:text-chad-blue transition-colors">
+            {announcement.title}
+          </CardTitle>
+          <p className="text-gray-700 mb-4">
+            {announcement.content}
+          </p>
+        </div>
+        
+        <div className="flex items-center justify-between pt-4 border-t">
+          <div className="flex items-center space-x-4">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className={`text-gray-600 hover:text-red-500 ${isLiked ? 'text-red-500' : ''}`}
+              onClick={() => likeMutation.mutate()}
+              disabled={likeMutation.isPending}
+            >
+              <Heart className={`h-4 w-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
+              {likeCount}
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="text-gray-600 hover:text-blue-500"
+              onClick={() => setShowComments(!showComments)}
+            >
+              <MessageCircle className="h-4 w-4 mr-1" />
+              {comments.length}
+            </Button>
+            <Button variant="ghost" size="sm" className="text-gray-600 hover:text-green-500">
+              <Share2 className="h-4 w-4 mr-1" />
+              Partager
+            </Button>
+          </div>
+        </div>
+
+        {showComments && (
+          <div className="mt-4 pt-4 border-t">
+            <div className="space-y-3 mb-4">
+              {comments.map((comment: any) => (
+                <div key={comment.id} className="flex space-x-3">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="bg-gray-200">
+                      {comment.authorId?.charAt(0) || 'U'}
                     </AvatarFallback>
                   </Avatar>
-                  <Input
-                    placeholder="Ajouter un commentaire..."
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && handleComment()}
-                    className="flex-1 text-sm"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={handleComment}
-                    disabled={!newComment.trim() || commentMutation.isPending}
-                    className="text-chad-blue hover:text-chad-blue/90"
-                    variant="ghost"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+                  <div className="flex-1">
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="font-semibold text-sm">{comment.authorId}</p>
+                      <p className="text-sm text-gray-700">{comment.content}</p>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {format(new Date(comment.createdAt), 'dd/MM/yyyy à HH:mm')}
+                    </p>
+                  </div>
                 </div>
+              ))}
+            </div>
+            
+            {user && (
+              <div className="flex space-x-2">
+                <Input
+                  placeholder="Écrivez un commentaire..."
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleComment()}
+                />
+                <Button 
+                  size="sm" 
+                  onClick={handleComment}
+                  disabled={!commentText.trim() || commentMutation.isPending}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
               </div>
             )}
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );
