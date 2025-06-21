@@ -64,9 +64,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User profile routes
-  app.put('/api/users/profile', isAuthenticated, async (req: any, res) => {
+  app.put('/api/users/profile', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const updatedUser = await storage.updateUserProfile(userId, req.body);
       res.json(updatedUser);
     } catch (error) {
@@ -100,9 +103,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/projects', isAuthenticated, async (req: any, res) => {
+  app.post('/api/projects', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const projectData = insertProjectSchema.parse({ ...req.body, creatorId: userId });
       const project = await storage.createProject(projectData);
       res.json(project);
@@ -126,9 +132,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/projects/:id/join', isAuthenticated, async (req: any, res) => {
+  app.post('/api/projects/:id/join', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const projectId = parseInt(req.params.id);
       await storage.joinProject(projectId, userId);
       res.json({ message: "Successfully joined project" });
@@ -163,9 +172,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/jobs', isAuthenticated, async (req: any, res) => {
+  app.post('/api/jobs', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const jobData = insertJobOfferSchema.parse({ ...req.body, posterId: userId });
       const job = await storage.createJobOffer(jobData);
       res.json(job);
@@ -178,6 +190,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/jobs/:id', async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid job ID" });
+      }
       const job = await storage.getJobOffer(id);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
@@ -189,16 +204,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/jobs/:id/apply', isAuthenticated, async (req: any, res) => {
+  app.post('/api/jobs/:id/apply', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const jobId = parseInt(req.params.id);
+      if (isNaN(jobId)) {
+        return res.status(400).json({ message: "Invalid job ID" });
+      }
       const { coverLetter } = req.body;
       await storage.applyToJob(jobId, userId, coverLetter);
       res.json({ message: "Application submitted successfully" });
     } catch (error) {
       console.error("Error applying to job:", error);
       res.status(500).json({ message: "Failed to apply to job" });
+    }
+  });
+
+  app.get('/api/jobs/applications', async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
+      const applications = await storage.getUserJobApplications(userId);
+      res.json(applications);
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+      res.status(500).json({ message: "Failed to fetch applications" });
     }
   });
 
@@ -213,9 +248,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/services', isAuthenticated, async (req: any, res) => {
+  app.post('/api/services', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const serviceData = insertServiceSchema.parse({ ...req.body, providerId: userId });
       const service = await storage.createService(serviceData);
       res.json(service);
@@ -225,23 +263,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/services/:id/request', isAuthenticated, async (req: any, res) => {
+  app.post('/api/services/:id/request', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const serviceId = parseInt(req.params.id);
       const { message } = req.body;
       await storage.requestService(serviceId, userId, message);
-      res.json({ message: "Service request submitted successfully" });
+      res.json({ message: "Demande de service envoyée aux administrateurs pour approbation" });
     } catch (error) {
       console.error("Error requesting service:", error);
       res.status(500).json({ message: "Failed to request service" });
     }
   });
 
-  app.post('/api/services/:id/approve', isAuthenticated, async (req: any, res) => {
+  app.post('/api/services/:id/approve', async (req, res) => {
     try {
-      const user = await storage.getUser(req.user.claims.sub);
-      if (!user || (user.role !== 'admin' && user.role !== 'assistant_admin')) {
+      const userId = (req.session as any)?.userId;
+      const userRole = (req.session as any)?.userRole;
+      if (!userId || (userRole !== 'admin' && userRole !== 'assistant_admin')) {
         return res.status(403).json({ message: "Unauthorized" });
       }
       
@@ -279,9 +321,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/announcements', isAuthenticated, async (req: any, res) => {
+  app.post('/api/announcements', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const announcementData = insertAnnouncementSchema.parse({ ...req.body, authorId: userId });
       const announcement = await storage.createAnnouncement(announcementData);
       res.json(announcement);
@@ -291,9 +336,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/announcements/:id/like', isAuthenticated, async (req: any, res) => {
+  app.post('/api/announcements/:id/like', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const announcementId = parseInt(req.params.id);
       await storage.likeAnnouncement(announcementId, userId);
       res.json({ message: "Announcement liked successfully" });
@@ -303,9 +351,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/announcements/:id/like', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/announcements/:id/like', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const announcementId = parseInt(req.params.id);
       await storage.unlikeAnnouncement(announcementId, userId);
       res.json({ message: "Announcement unliked successfully" });
@@ -327,14 +378,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/announcements/:id/comments', isAuthenticated, async (req: any, res) => {
+  app.post('/api/announcements/:id/comments', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const announcementId = parseInt(req.params.id);
       const commentData = insertCommentSchema.parse({
         ...req.body,
         announcementId,
-        userId,
+        authorId: userId,
       });
       const comment = await storage.createComment(commentData);
       res.json(comment);
@@ -345,9 +399,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Message routes
-  app.get('/api/messages', isAuthenticated, async (req: any, res) => {
+  app.get('/api/messages', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const messages = await storage.getUserMessages(userId);
       res.json(messages);
     } catch (error) {
@@ -356,9 +413,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/messages', isAuthenticated, async (req: any, res) => {
+  app.post('/api/messages', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const messageData = insertMessageSchema.parse({ ...req.body, senderId: userId });
       const message = await storage.createMessage(messageData);
       res.json(message);
@@ -368,9 +428,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/conversations/:userId', isAuthenticated, async (req: any, res) => {
+  app.get('/api/conversations/:userId', async (req, res) => {
     try {
-      const currentUserId = req.user.claims.sub;
+      const currentUserId = (req.session as any)?.userId;
+      if (!currentUserId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const otherUserId = req.params.userId;
       const messages = await storage.getConversation(currentUserId, otherUserId);
       res.json(messages);
@@ -381,9 +444,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Connection routes
-  app.post('/api/connections', isAuthenticated, async (req: any, res) => {
+  app.get('/api/connections', async (req, res) => {
     try {
-      const requesterId = req.user.claims.sub;
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
+      const connections = await storage.getUserConnections(userId);
+      res.json(connections);
+    } catch (error) {
+      console.error("Error fetching connections:", error);
+      res.status(500).json({ message: "Failed to fetch connections" });
+    }
+  });
+
+  app.post('/api/connections', async (req, res) => {
+    try {
+      const requesterId = (req.session as any)?.userId;
+      if (!requesterId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const { receiverId } = req.body;
       await storage.sendConnectionRequest(requesterId, receiverId);
       res.json({ message: "Connection request sent successfully" });
@@ -393,14 +473,105 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/connections', isAuthenticated, async (req: any, res) => {
+  app.put('/api/connections/:id/accept', async (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const connections = await storage.getUserConnections(userId);
-      res.json(connections);
+      const userId = (req.session as any)?.userId;
+      if (!userId) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
+      const connectionId = parseInt(req.params.id);
+      await storage.acceptConnectionRequest(connectionId);
+      res.json({ message: "Connection request accepted" });
     } catch (error) {
-      console.error("Error fetching connections:", error);
-      res.status(500).json({ message: "Failed to fetch connections" });
+      console.error("Error accepting connection:", error);
+      res.status(500).json({ message: "Failed to accept connection" });
+    }
+  });
+
+  // Admin routes for database export/import
+  app.get('/api/admin/export', async (req, res) => {
+    try {
+      const userRole = (req.session as any)?.userRole;
+      if (userRole !== 'admin') {
+        return res.status(403).json({ message: 'Access denied - Admin only' });
+      }
+      
+      const exportData = {
+        users: await db.select().from(users),
+        projects: await db.select().from(projects),
+        jobOffers: await db.select().from(jobOffers),
+        services: await db.select().from(services),
+        announcements: await db.select().from(announcements),
+        exportDate: new Date().toISOString(),
+        version: '1.0'
+      };
+      
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename=skilllink-export.json');
+      res.json(exportData);
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      res.status(500).json({ message: 'Failed to export database' });
+    }
+  });
+
+  app.post('/api/admin/import', async (req, res) => {
+    try {
+      const userRole = (req.session as any)?.userRole;
+      if (userRole !== 'admin') {
+        return res.status(403).json({ message: 'Access denied - Admin only' });
+      }
+      
+      const { data } = req.body;
+      if (!data) {
+        return res.status(400).json({ message: 'No data provided for import' });
+      }
+      
+      // This is a simplified import - in production you'd want more validation
+      let imported = 0;
+      
+      if (data.users && Array.isArray(data.users)) {
+        for (const user of data.users) {
+          try {
+            await db.insert(users).values(user).onConflictDoNothing();
+            imported++;
+          } catch (e) {
+            console.warn('Failed to import user:', user.id);
+          }
+        }
+      }
+      
+      res.json({ 
+        message: `Successfully imported ${imported} records`,
+        imported 
+      });
+    } catch (error) {
+      console.error('Error importing data:', error);
+      res.status(500).json({ message: 'Failed to import database' });
+    }
+  });
+
+  app.get('/api/admin/stats', async (req, res) => {
+    try {
+      const userRole = (req.session as any)?.userRole;
+      if (userRole !== 'admin') {
+        return res.status(403).json({ message: 'Access denied - Admin only' });
+      }
+      
+      const [userCount] = await db.select({ count: sql`count(*)` }).from(users);
+      const [projectCount] = await db.select({ count: sql`count(*)` }).from(projects);
+      const [jobCount] = await db.select({ count: sql`count(*)` }).from(jobOffers);
+      const [serviceCount] = await db.select({ count: sql`count(*)` }).from(services);
+      
+      res.json({
+        users: userCount.count,
+        projects: projectCount.count,
+        jobs: jobCount.count,
+        services: serviceCount.count
+      });
+    } catch (error) {
+      console.error('Error fetching admin stats:', error);
+      res.status(500).json({ message: 'Failed to fetch statistics' });
     }
   });
 

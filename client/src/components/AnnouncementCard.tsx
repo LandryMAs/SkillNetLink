@@ -27,6 +27,8 @@ export default function AnnouncementCard({ announcement }: AnnouncementCardProps
     enabled: showComments,
   });
 
+  const commentsArray = Array.isArray(comments) ? comments : [];
+
   const likeMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch(`/api/announcements/${announcement.id}/like`, {
@@ -40,7 +42,7 @@ export default function AnnouncementCard({ announcement }: AnnouncementCardProps
     },
     onSuccess: () => {
       setIsLiked(!isLiked);
-      setLikeCount(prev => isLiked ? prev - 1 : prev + 1);
+      setLikeCount((prev: number) => isLiked ? prev - 1 : prev + 1);
       queryClient.invalidateQueries({ queryKey: ["/api/announcements"] });
     },
     onError: () => {
@@ -143,7 +145,7 @@ export default function AnnouncementCard({ announcement }: AnnouncementCardProps
               onClick={() => setShowComments(!showComments)}
             >
               <MessageCircle className="h-4 w-4 mr-1" />
-              {comments.length}
+              {commentsArray.length}
             </Button>
             <Button variant="ghost" size="sm" className="text-gray-600 hover:text-green-500">
               <Share2 className="h-4 w-4 mr-1" />
@@ -155,7 +157,7 @@ export default function AnnouncementCard({ announcement }: AnnouncementCardProps
         {showComments && (
           <div className="mt-4 pt-4 border-t">
             <div className="space-y-3 mb-4">
-              {comments.map((comment: any) => (
+              {commentsArray.map((comment: any) => (
                 <div key={comment.id} className="flex space-x-3">
                   <Avatar className="h-8 w-8">
                     <AvatarFallback className="bg-gray-200">
